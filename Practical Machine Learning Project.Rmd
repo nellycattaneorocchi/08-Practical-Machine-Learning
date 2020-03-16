@@ -1,0 +1,154 @@
+---
+title: "Data Science Specialization, Course 08 (Practical Machine Learning) Project"
+author: "Nelly Cattaneo"
+date: "28/02/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Background
+
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement, a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: <http://groupware.les.inf.puc-rio.br/har> (see the section on the Weight Lifting Exercise Dataset)."
+
+## Goal
+
+The goal of this project is to utilize machine learning to predict which one of the 5 ways the barbell lift falls under. 
+
+
+## Data Source and citation
+
+The training data come from this source: <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv>
+and test data from <https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv>
+
+Data for this project are from  <http://web.archive.org/web/20161224072740/http:/groupware.les.inf.puc-rio.br/har>.
+
+## Machine Learning prediction
+
+### Data retrieval
+
+Download of the two datasets and preparation of training and test datasets.
+
+```{r getData}
+set.seed(1)
+
+trainPath <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testPath <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+setwd("~/coursera/08 Practical Machine Learning")
+path <- getwd()
+
+trainFile <- file.path(path, "pml-training.csv")
+if (!file.exists(trainFile)) {
+        download.file(trainPath, destfile=trainFile)
+}
+trainData <- read.csv(trainFile, na.strings=c("NA","#DIV/0!",""))
+
+testFile <- file.path(path, "pml-testing.csv")
+if (!file.exists(testFile)) {
+        download.file(testPath, destfile=testFile)
+}
+testData <- read.csv(testFile, na.strings=c("NA","#DIV/0!",""))
+```
+
+A brief analysis of the training dataset shows us that there are `r dim(trainData)[1]` observations and `r dim(trainData)[2]` features.
+
+Furthermore, the distribution on the five classes (A, B, C, D, E) is the following:
+
+```{r exploratory}
+table(trainData$classe)
+```
+
+### Preprocessing
+
+#### Partitioning the training set
+In order to be able to validate the model, we split the training data into a training and a validation set.
+
+```{r partition}
+library(caret)
+
+trainSet <- createDataPartition(trainData$classe, p = 0.7, list = FALSE)
+Training <- trainData[trainSet, ]
+Validation <- trainData[-trainSet, ]
+```
+
+#### Cleaning up the data
+
+##### Near zero variance features: excluded
+```{r NZV}
+NZVcol <- nearZeroVar(Training)
+Training <- Training[, -NZVcol]
+```
+
+##### Columns with 30% or more missing values: excluded
+```{r MV}
+countMissing <- sapply(Training, function(x) {
+    sum(!(is.na(x) | x == ""))
+})
+nullCols <- names(countMissing[countMissing < 0.7 * length(Training$classe)])
+Training <- Training[, !names(Training) %in% nullCols]
+```
+
+##### Descriptive columns: excluded
+```{r descriptiveCols}
+descriptCols <- c("X", "user_name", "raw_timestamp_part_1", "raw_timestamp_part_2", "cvtd_timestamp", "new_window", "num_window")
+Training <- Training[, !names(Training) %in% descriptCols]
+```
+
+
+### Creating the model
+To classify and analyze regression we are going to use the random forest model; I have decided to use this model, first proposed by Ho in 1995, because random forests are a way of averaging multiple deep decision trees, trained on different parts of the same training set, with the goal of reducing the variance.
+
+```{r modelTrain}
+library(randomForest)
+
+# importance = TRUE because we want importance and predictors to be assessed
+# ntrees, number of trees to grow, set to 20, to ensure that every input row gets predicted at least a few times
+rfModel <- randomForest(classe ~ ., data = Training, importance = TRUE, ntrees = 20)
+```
+
+### Validating the model 
+We are now going to test the model, initially on the training set then on the validation one. 
+
+#### On the training set
+```{r performanceTrain}
+ptraining <- predict(rfModel, Training)
+confusionMatrix(ptraining, Training$classe)
+```
+
+As the model was build on the training dataset, it has excellent performances against it.
+
+#### On the validation set
+```{r performanceValidation}
+pvalidation <- predict(rfModel, Validation)
+confusionMatrix(pvalidation, Validation$classe)
+```
+
+Performances are good because the cross validation accuracy is 99.46%; therefore, the expected out of sample error is of 0.54%.
+
+### Predicting the test set
+Let's apply the model to the test set.
+
+```{r prediction}
+ptest <- predict(rfModel, testData)
+ptest
+```
+
+
+### Decision Tree Visualization
+
+Below a visualization of the model developed.
+
+```{r graph}
+library(rpart)
+library(rattle)
+treeModel <- rpart(classe ~ ., data=Training, method="class")
+fancyRpartPlot(treeModel)
+```
+
+
+## GitHub repository
+
+Files have been saved on <https://github.com/nellycattaneorocchi/08-Practical-Machine-Learning.git>.
